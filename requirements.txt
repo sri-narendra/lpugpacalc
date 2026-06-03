@@ -1,8 +1,5 @@
 flask>=3.0
 requests>=2.31
 beautifulsoup4>=4.12
-scrapling>=0.1
-curl_cffi>=0.7
-patchright>=0.1
-playwright>=1.40
+scrapling[all]>=0.1
 gunicorn>=22.0
