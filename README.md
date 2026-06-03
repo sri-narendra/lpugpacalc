@@ -112,6 +112,10 @@ python -m unittest discover tests
 - `lpu_attendance.py` is an older, standalone version that only fetches attendance. Use `main.py` for full functionality.
 - The `placements*.html` files are raw snapshots of the UMS login page for reference during development.
 
+## Live Site
+
+Deployed at: [https://yumsclone.onrender.com](https://yumsclone.onrender.com)
+
 ## License
 
 MIT
