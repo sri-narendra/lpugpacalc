@@ -3,5 +3,6 @@ requests>=2.31
 beautifulsoup4>=4.12
 scrapling>=0.1
 curl_cffi>=0.7
+patchright>=0.1
 playwright>=1.40
 gunicorn>=22.0
