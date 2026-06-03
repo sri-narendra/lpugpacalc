@@ -39,7 +39,7 @@ def get_page_with_turnstile():
     for attempt in range(3):
         try:
             from scrapling.fetchers import Fetcher
-            response = Fetcher.fetch(
+            response = Fetcher.get(
                 LOGIN_URL,
                 impersonate='chrome',
                 timeout=120,
@@ -196,7 +196,7 @@ def _scrapling_fetch_credits(sess: requests.Session, url: str) -> dict[str, floa
     try:
         from scrapling.fetchers import Fetcher
         cjar = tuple(sess.cookies)
-        resp = Fetcher.fetch(
+        resp = Fetcher.get(
             url, impersonate='chrome',
             timeout=120, follow_redirects=True,
             cookies={c.name: c.value for c in cjar},
