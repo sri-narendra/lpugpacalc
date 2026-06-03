@@ -18,26 +18,42 @@ BASE = "https://ums.lpu.in/lpuums/"
 
 
 def get_page_with_turnstile():
-    """Fetch login page using Scrapling with Cloudflare Turnstile solving."""
-    from scrapling import StealthyFetcher
+    """Fetch login page - try HTTP-only first, fall back to browser-based solving."""
+    import requests as _req
+    headers = {
+        'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/147.0.0.0 Safari/537.36',
+        'Accept': 'text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8',
+        'Accept-Language': 'en-US,en;q=0.9',
+    }
+    try:
+        resp = _req.get(LOGIN_URL, headers=headers, timeout=30)
+        html = resp.text
+        if 'cf-turnstile-response' in html:
+            print(f"  [FETCH] HTTP-only: fetched {len(html)} chars, cf-turnstile-response found", file=sys.stderr)
+            return html
+        print(f"  [FETCH] HTTP-only missing cf-turnstile-response, trying Fetcher...", file=sys.stderr)
+    except Exception as e:
+        print(f"  [FETCH] HTTP-only failed: {e}", file=sys.stderr)
+
     last_err = None
     for attempt in range(3):
         try:
-            fetcher = StealthyFetcher()
-            response = fetcher.fetch(
+            from scrapling.fetchers import Fetcher
+            response = Fetcher.fetch(
                 LOGIN_URL,
-                solve_cloudflare=True,
-                headless=True,
-                wait=8000,
-                timeout=60000,
+                impersonate='chrome',
+                timeout=120,
+                follow_redirects=True,
             )
-            html = response.html_content
+            html = response.html_content if hasattr(response, 'html_content') else response.text
             if 'cf-turnstile-response' in html:
+                print(f"  [FETCH] Fetcher (curl_cffi): fetched {len(html)} chars, cf-turnstile-response found", file=sys.stderr)
                 return html
-            print(f"  [RETRY {attempt+1}] No cf-turnstile-response found, retrying...", file=sys.stderr)
+            print(f"  [RETRY {attempt+1}] Fetcher: no cf-turnstile-response found", file=sys.stderr)
         except Exception as e:
             last_err = e
-            print(f"  [RETRY {attempt+1}] Fetch failed: {e}", file=sys.stderr)
+            print(f"  [RETRY {attempt+1}] Fetcher failed: {e}", file=sys.stderr)
+
     raise RuntimeError(f"Failed to fetch login page with Turnstile after 3 attempts: {last_err}")
 
 
@@ -172,42 +188,37 @@ def extract_result_token(sess: requests.Session) -> str | None:
 
 
 def _scrapling_fetch_credits(sess: requests.Session, url: str) -> dict[str, float]:
-    """Use Scrapling browser (StealthyFetcher) to render the Next.js resultsummary
-    page and extract course credits from the fully-rendered DOM.
+    """Fetch the Next.js resultsummary page via Scrapling Fetcher and
+    extract course credits from the rendered HTML.
 
-    The Python Scrapling library mirrors the Scrapling MCP tool flow:
-    open session → navigate → wait for network idle → extract HTML.
+    Falls back to requests if Fetcher is unavailable.
     """
     try:
-        from scrapling import StealthyFetcher
-
-        cookies = [{'name': c.name, 'value': c.value,
-                    'domain': c.domain, 'path': c.path}
-                   for c in sess.cookies]
-
-        def click_grades_tab(page):
-            import time as _t
-            try:
-                grades_btn = page.locator("button:has-text('Grades')")
-                grades_btn.wait_for(timeout=15000)
-                grades_btn.click()
-                _t.sleep(5)
-            except Exception:
-                pass
-
-        resp = StealthyFetcher.fetch(
-            url, cookies=cookies, headless=True,
-            network_idle=True, wait=15000, timeout=90000,
-            page_action=click_grades_tab,
+        from scrapling.fetchers import Fetcher
+        cjar = tuple(sess.cookies)
+        resp = Fetcher.fetch(
+            url, impersonate='chrome',
+            timeout=120, follow_redirects=True,
+            cookies={c.name: c.value for c in cjar},
         )
-        html = resp.html_content
+        html = resp.html_content if hasattr(resp, 'html_content') else resp.text
+        # Try parsing inline first, then fetch via requests fallback
         credits = parse_credit_table(html)
         if credits:
-            print(f"  [OK] Scrapling browser: {len(credits)} course credits", file=sys.stderr)
+            print(f"  [OK] Fetcher: {len(credits)} course credits", file=sys.stderr)
             return credits
-        print(f"  [INFO] Scrapling browser: page rendered ({len(html)} chars), no credit table", file=sys.stderr)
+        print(f"  [INFO] Fetcher: page fetched ({len(html)} chars), no credit table", file=sys.stderr)
     except Exception as e:
-        print(f"  [FAIL] Scrapling browser: {e}", file=sys.stderr)
+        print(f"  [FAIL] Scrapling Fetcher: {e}", file=sys.stderr)
+
+    try:
+        resp = sess.get(url, timeout=30)
+        credits = parse_credit_table(resp.text)
+        if credits:
+            print(f"  [OK] requests fallback: {len(credits)} course credits", file=sys.stderr)
+            return credits
+    except Exception:
+        pass
     return {}
 
 
