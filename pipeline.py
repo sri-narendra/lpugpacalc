@@ -6,11 +6,24 @@ from bs4 import BeautifulSoup
 from utils import (
     fetch_login_page, parse_form_fields, login,
     call_api, fetch_credits_from_api, BASE,
+    _emit_progress,
 )
 
 
 def login_flow(sess, userid: str, password: str) -> bool:
-    html = fetch_login_page()
+    """Fetch login page using the session (so ASP.NET cookies carry over to POST)."""
+    _emit_progress('turnstile', 'Fetching login page…', 5)
+    try:
+        resp = sess.get('https://ums.lpu.in/lpuums/', timeout=30)
+        html = resp.text
+        if not html or len(html) < 100:
+            raise ValueError(f"too short ({len(html or '')} chars)")
+        print(f"  [FETCH] session: {len(html)} chars, status={resp.status_code}", file=sys.stderr)
+    except Exception as e:
+        print(f"  [FETCH] session failed: {e}, falling back to stateless fetch", file=sys.stderr)
+        html = fetch_login_page()
+    _emit_progress('turnstile', f'Got login page ({len(html)} chars)', 40)
+
     fields = parse_form_fields(html)
     if not fields.get('password_field'):
         print("Error: password field not found in login page", file=sys.stderr)
@@ -31,8 +44,12 @@ def fetch_dashboard_data(sess, userid: str) -> dict:
         except Exception as e:
             print(f"  [FAIL] {key}: {e}", file=sys.stderr)
     print(f"  Fetching course credits via API...", file=sys.stderr)
-    raw['credit_map'] = fetch_credits_from_api(sess, userid)
-    print(f"  Credits fetched: {len(raw['credit_map'])} courses", file=sys.stderr)
+    try:
+        raw['credit_map'] = fetch_credits_from_api(sess, userid)
+        print(f"  Credits fetched: {len(raw['credit_map'])} courses", file=sys.stderr)
+    except Exception as e:
+        print(f"  [FAIL] credits: {e}", file=sys.stderr)
+        raw['credit_map'] = {}
     return raw
 
 
