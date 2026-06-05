@@ -8,13 +8,16 @@ import time
 import html as html_mod
 from urllib.parse import quote, urlencode
 
-import requests
 from bs4 import BeautifulSoup
 from flask import Flask, render_template, request, redirect, url_for, session, jsonify
 
 
 LOGIN_URL = "https://ums.lpu.in/lpuums/"
 BASE = "https://ums.lpu.in/lpuums/"
+
+# Cloudflare Worker proxy — falls back when the Render IP is blocked.
+# Set via set_proxy_worker_url().
+_PROXY_URL = None
 
 
 # Optional progress callback — set via set_progress_callback() from main.py.
@@ -29,94 +32,75 @@ def set_progress_callback(fn):
     _progress_callback = fn
 
 
+def set_proxy_worker_url(url: str) -> None:
+    global _PROXY_URL
+    _PROXY_URL = url
+
+
 def _emit_progress(step: str, message: str, pct: int) -> None:
     if _progress_callback is not None:
         try:
             _progress_callback(step, message, pct)
         except Exception:
-            # Never let progress reporting break the caller
             pass
 
 
-def get_page_with_turnstile():
-    """Fetch login page using Scrapling StealthyFetcher (Playwright headless).
+def fetch_page(url: str, method: str = 'GET', data: dict | None = None) -> str:
+    """Fetch a page using curl_cffi (TLS impersonation), falling back to the
+    Cloudflare Worker proxy if the direct request fails or gets a challenge."""
+    from curl_cffi import requests as cffi_req
 
-    StealthyFetcher is the only reliable path on Render's free tier (DynamicFetcher
-    fails Cloudflare headless detection on this IP). We try StealthyFetcher first
-    and only fall back to DynamicFetcher if it crashes outright (import error,
-    browser-binary missing, etc.). This drops the typical login time from
-    ~5 minutes to ~30-60 seconds.
+    impersonate = 'chrome120'
+    last_err = None
 
-    Returns HTML once the cf-turnstile-response input has a non-empty value.
-    """
-    from bs4 import BeautifulSoup
+    strategies = []
 
-    def _turnstile_solved(html: str) -> bool:
-        """True if cf-turnstile-response input is present AND has a non-empty value."""
-        soup = BeautifulSoup(html, 'html.parser')
-        tag = soup.find('input', {'name': 'cf-turnstile-response'})
-        if not tag:
-            return False
-        value = (tag.get('value') or '').strip()
-        return len(value) > 20  # real Turnstile tokens are 200+ chars
+    # Strategy 1: direct curl_cffi (TLS impersonation bypasses JS challenge)
+    strategies.append(('direct', lambda: cffi_req.request(
+        method, url,
+        data=data,
+        impersonate=impersonate,
+        timeout=30,
+        allow_redirects=True,
+    )))
 
-    # StealthyFetcher first (the only path that works on Render's free tier)
-    try:
-        from scrapling.fetchers import StealthyFetcher
-        _emit_progress('turnstile', 'Launching stealth browser (bypasses Cloudflare)…', 5)
-        print("  [FETCH] Using StealthyFetcher (primary path)...", file=sys.stderr)
-        _emit_progress('turnstile', 'Waiting for Cloudflare challenge (≤20s)…', 15)
-        response = StealthyFetcher.fetch(
-            LOGIN_URL,
-            headless=True,
-            solve_cloudflare=True,
-            hide_canvas=True,
-            block_webrtc=True,
-            network_idle=True,
-            load_dom=True,
-            wait=35000,
-            timeout=90000,
-        )
-        _emit_progress('turnstile', 'Page loaded, verifying Turnstile token…', 45)
-        html = response.html_content if hasattr(response, 'html_content') else str(response.body or '')
-        if 'cf-turnstile-response' in html and _turnstile_solved(html):
-            _emit_progress('turnstile', f'Turnstile solved ✔ ({len(html)} chars)', 60)
-            print(f"  [FETCH] StealthyFetcher: fetched {len(html)} chars, Turnstile solved", file=sys.stderr)
+    # Strategy 2: via Cloudflare Worker proxy (if configured)
+    if _PROXY_URL:
+        strategies.append(('worker-proxy', lambda: cffi_req.request(
+            method, _PROXY_URL,
+            params={'url': url},
+            data=data,
+            impersonate=impersonate,
+            timeout=30,
+            allow_redirects=True,
+        )))
+
+    for label, fn in strategies:
+        try:
+            print(f"  [FETCH] {label}: {url[:60]}...", file=sys.stderr)
+            resp = fn()
+            html = resp.text
+            if not html or len(html) < 100:
+                print(f"  [FAIL] {label}: too short ({len(html or '')} chars)", file=sys.stderr)
+                continue
+            print(f"  [OK] {label}: {len(html)} chars, status={resp.status_code}", file=sys.stderr)
             return html
-        print(f"  [FAIL] StealthyFetcher: token still empty (len={len(html)})", file=sys.stderr)
-        _emit_progress('turnstile', 'StealthyFetcher: token still empty, trying DynamicFetcher as backup', 60)
-    except Exception as e:
-        print(f"  [FAIL] StealthyFetcher: {e}", file=sys.stderr)
-        _emit_progress('turnstile', f'StealthyFetcher error ({e}), trying DynamicFetcher as backup', 60)
-
-    # Fallback: DynamicFetcher (less reliable but might work in some envs)
-    try:
-        from scrapling.fetchers import DynamicFetcher
-        _emit_progress('turnstile', 'Launching standard browser (fallback)…', 62)
-        print("  [FALLBACK] Trying DynamicFetcher...", file=sys.stderr)
-        _emit_progress('turnstile', 'Waiting for Cloudflare challenge (≤15s)…', 65)
-        response = DynamicFetcher.fetch(
-            LOGIN_URL,
-            headless=True,
-            network_idle=True,
-            load_dom=True,
-            wait=15000,
-            timeout=60000,
-        )
-        _emit_progress('turnstile', 'Page loaded, verifying token…', 75)
-        html = response.html_content if hasattr(response, 'html_content') else str(response.body or '')
-        if 'cf-turnstile-response' in html and _turnstile_solved(html):
-            _emit_progress('turnstile', f'Turnstile solved ✔ ({len(html)} chars)', 80)
-            print(f"  [FETCH] DynamicFetcher: fetched {len(html)} chars, Turnstile solved", file=sys.stderr)
-            return html
-        print(f"  [FAIL] DynamicFetcher: token still empty (len={len(html)})", file=sys.stderr)
-    except Exception as e:
-        print(f"  [FAIL] DynamicFetcher: {e}", file=sys.stderr)
+        except Exception as e:
+            last_err = e
+            print(f"  [FAIL] {label}: {e}", file=sys.stderr)
 
     raise RuntimeError(
-        "Failed to solve Turnstile. Both StealthyFetcher and DynamicFetcher returned "
-        "empty tokens. This usually means Cloudflare is blocking this IP/network."
+        f"Failed to fetch {url}. Last error: {last_err}. "
+        "Cloudflare may be blocking this IP/network."
     )
+
+
+def fetch_login_page() -> str:
+    """Fetch the LPU UMS login page HTML using curl_cffi."""
+    _emit_progress('turnstile', 'Fetching login page via TLS impersonation…', 5)
+    html = fetch_page(LOGIN_URL)
+    _emit_progress('turnstile', f'Got login page ({len(html)} chars)', 40)
+    return html
 
 
 def parse_form_fields(html: str) -> dict:
@@ -176,25 +160,29 @@ def _body_has_login_error(html: str) -> bool:
     return False
 
 
-def login(session: requests.Session, userid: str, password: str, fields: dict) -> bool:
-    """Log in to LPU UMS using extracted form fields and Turnstile token.
+def login(session, userid: str, password: str, fields: dict) -> bool:
+    """Log in to LPU UMS using extracted form fields.
+
+    Tries submitting with an empty Turnstile token first (some servers don't
+    validate it). Logs a warning if token is missing.
 
     Success is verified by the URL changing to StudentDashboard.aspx (the
-    strongest signal — LPU redirects here only after a successful login).
+    strongest signal — LPU only redirects there after a successful login).
     We also accept new auth cookies as a fallback. Login error phrases in
     the response body are checked but only against specific phrases, to
     avoid false positives on common dashboard words.
     """
-    if not fields.get('turnstile_token') or len(fields['turnstile_token']) < 20:
-        print("  [LOGIN] Refusing: Turnstile token is empty/invalid", file=sys.stderr)
-        return False
+    token = fields.get('turnstile_token', '')
+    if not token or len(token) < 20:
+        print("  [LOGIN] Turnstile token is empty — submitting anyway "
+              "(server may or may not require it)", file=sys.stderr)
 
     pw_field = fields['password_field']
     submit_btn = fields['submit_button']
     data = {
         'txtU': userid,
         pw_field: password,
-        'cf-turnstile-response': fields['turnstile_token'],
+        'cf-turnstile-response': token,
         submit_btn: 'Login',
         'DropDownList1': '1',
         '__VIEWSTATE': fields['viewstate'],
@@ -212,23 +200,17 @@ def login(session: requests.Session, userid: str, password: str, fields: dict) -
                         allow_redirects=True, timeout=30)
 
     url_ok = 'studentdashboard' in resp.url.lower()
-    matched_phrase = _body_has_login_error(resp.text)  # returns phrase or False
+    matched_phrase = _body_has_login_error(resp.text)
     new_auth_cookies = any(
         c.name.lower() in ('.aspxauth', 'asp.net_sessionid', 'ums_auth', 'auth')
         for c in session.cookies if c.name not in cookies_before
     )
 
-    # The URL changing to StudentDashboard.aspx is the definitive success signal:
-    # LPU only redirects there after a successful login. We trust it over body
-    # text matching (the dashboard page may contain unrelated error-handling
-    # JS that false-positives phrase matching).
     if url_ok:
         success = True
     elif new_auth_cookies:
-        # Fallback: new auth cookies were set even though URL didn't change
         success = matched_phrase is False
     else:
-        # No URL change, no new auth cookies — must be a failure
         success = False
 
     print(f"  [LOGIN] url_ok={url_ok} new_cookies={new_auth_cookies} "
@@ -236,7 +218,7 @@ def login(session: requests.Session, userid: str, password: str, fields: dict) -
     return success
 
 
-def call_api(session: requests.Session, url: str) -> str:
+def call_api(session, url: str) -> str:
     """Call an ASP.NET WebMethod that returns JSON."""
     headers = {
         'Content-Type': 'application/json; charset=utf-8',
@@ -250,7 +232,7 @@ def call_api(session: requests.Session, url: str) -> str:
     return data.get('d', '')
 
 
-def call_api_json(session: requests.Session, url: str):
+def call_api_json(session, url: str):
     """Call an ASP.NET WebMethod and return the raw parsed JSON."""
     headers = {
         'Content-Type': 'application/json; charset=utf-8',
@@ -263,7 +245,7 @@ def call_api_json(session: requests.Session, url: str):
     return resp.json().get('d', '')
 
 
-def fetch_all_data(sess: requests.Session) -> dict:
+def fetch_all_data(sess) -> dict:
     """Fetch all available data from UMS and return as a dict."""
     data = {}
     api_base = BASE + "StudentDashboard.aspx/"
@@ -303,7 +285,7 @@ def fetch_all_data(sess: requests.Session) -> dict:
     return data
 
 
-def extract_result_token(sess: requests.Session) -> str | None:
+def extract_result_token(sess) -> str | None:
     """Get examination result token via openapp.aspx redirect."""
     _emit_progress('credits', 'Getting exam-result token from UMS…', 94)
     try:
@@ -341,8 +323,8 @@ def _click_grades_tab(page) -> bool:
     return False
 
 
-def _transfer_cookies(sess: requests.Session) -> list[dict]:
-    """Transfer requests.Session cookies to Playwright-compatible format."""
+def _transfer_cookies(sess) -> list[dict]:
+    """Transfer session cookies to Playwright-compatible format."""
     cookies = []
     for c in sess.cookies:
         cookies.append({
@@ -356,7 +338,7 @@ def _transfer_cookies(sess: requests.Session) -> list[dict]:
     return cookies
 
 
-def fetch_credits_from_api(sess: requests.Session, reg_no: str) -> dict[str, float]:
+def fetch_credits_from_api(sess, reg_no: str) -> dict[str, float]:
     """Fetch course credits via Playwright going through openapp.aspx.
 
     The resultsummary page is a Next.js SPA behind a short-lived auth token.

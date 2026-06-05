@@ -7,10 +7,14 @@ sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 
 import uuid
 import time
-import requests
+from curl_cffi import requests as cffi_requests
 from flask import Flask, render_template, request, jsonify, session as flask_session
 
 from pipeline import login_flow, fetch_dashboard_data, process_dashboard_data, print_dashboard_report
+from utils import set_proxy_worker_url
+
+# Set Cloudflare Worker proxy fallback (curl_cffi tries this if direct fetch fails or gets challenged)
+set_proxy_worker_url("https://lpu-proxy.narendra-p7893.workers.dev")
 
 app = Flask(__name__, template_folder='.')
 app.secret_key = os.urandom(24).hex()
@@ -36,7 +40,7 @@ def do_login():
         if not userid or not password:
             return jsonify({'ok': False, 'error': 'User ID and password are required.'})
 
-        sess = requests.Session()
+        sess = cffi_requests.Session(impersonate="chrome120")
         if not login_flow(sess, userid, password):
             return jsonify({'ok': False, 'error': 'Login failed. Check your credentials.'})
 
@@ -76,7 +80,7 @@ def cli_main():
     userid = sys.argv[2]
     password = sys.argv[3]
 
-    sess = requests.Session()
+    sess = cffi_requests.Session(impersonate="chrome120")
     if not login_flow(sess, userid, password):
         sys.exit(1)
 

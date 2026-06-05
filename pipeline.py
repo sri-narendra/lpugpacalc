@@ -2,24 +2,23 @@
 import re
 import sys
 import json
-import requests
 from bs4 import BeautifulSoup
 from utils import (
-    get_page_with_turnstile, parse_form_fields, login,
+    fetch_login_page, parse_form_fields, login,
     call_api, fetch_credits_from_api, BASE,
 )
 
 
-def login_flow(sess: requests.Session, userid: str, password: str) -> bool:
-    html = get_page_with_turnstile()
+def login_flow(sess, userid: str, password: str) -> bool:
+    html = fetch_login_page()
     fields = parse_form_fields(html)
-    if not fields.get('turnstile_token') or not fields.get('password_field'):
-        print("Error: Turnstile token or password field not found", file=sys.stderr)
+    if not fields.get('password_field'):
+        print("Error: password field not found in login page", file=sys.stderr)
         return False
     return login(sess, userid, password, fields)
 
 
-def fetch_dashboard_data(sess: requests.Session, userid: str) -> dict:
+def fetch_dashboard_data(sess, userid: str) -> dict:
     raw = {}
     api_base = BASE + "StudentDashboard.aspx/"
     endpoints = {
