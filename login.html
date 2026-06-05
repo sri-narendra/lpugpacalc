@@ -1,0 +1,289 @@
+<!DOCTYPE html>
+<html lang="en" data-theme="dark">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Sign In &middot; GPA Calc</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Bricolage+Grotesque:opsz,wght@12..96,400;12..96,500;12..96,600;12..96,700;12..96,800&family=DM+Sans:opsz,wght@9..40,300;9..40,400;9..40,500;9..40,600;9..40,700&family=JetBrains+Mono:wght@400;500;600&display=swap" rel="stylesheet">
+<style>
+:root, [data-theme="dark"] {
+  --bg: #060608;
+  --surface: oklch(0.10 0.01 28 / 0.55);
+  --surface-border: oklch(0.20 0.02 28 / 0.25);
+  --surface-raised: oklch(0.06 0.01 28);
+  --border-input: oklch(0.18 0.01 28);
+  --text: oklch(0.92 0.01 45);
+  --text-muted: oklch(0.48 0.02 42);
+  --text-placeholder: oklch(0.30 0.01 35);
+  --text-back-link: oklch(0.34 0.01 35);
+  --accent: oklch(0.60 0.16 50);
+  --accent-soft: oklch(0.60 0.16 50 / 0.08);
+  --accent-border: oklch(0.60 0.16 50 / 0.20);
+  --accent-glow: oklch(0.60 0.16 50 / 0.15);
+  --grain: url("data:image/svg+xml,%3Csvg viewBox='0 0 256 256' xmlns='http://www.w3.org/2000/svg'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.9' numOctaves='4' stitchTiles='stitch'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23n)'/%3E%3C/svg%3E");
+  --grain-opacity: 0.018;
+  --glow-opacity: 0.3;
+  --shadow-card: 0 0 0 1px oklch(0 0 0 / 0.04), 0 8px 80px oklch(0 0 0 / 0.35);
+  --shadow-toggle: 0 4px 20px oklch(0 0 0 / 0.15);
+}
+[data-theme="light"] {
+  --bg: oklch(0.93 0.01 50);
+  --surface: oklch(0.87 0.01 48 / 0.6);
+  --surface-border: oklch(0.78 0.01 45 / 0.3);
+  --surface-raised: oklch(0.82 0.01 45);
+  --border-input: oklch(0.70 0.01 42);
+  --text: oklch(0.12 0.02 45);
+  --text-muted: oklch(0.50 0.02 45);
+  --text-placeholder: oklch(0.60 0.01 42);
+  --text-back-link: oklch(0.55 0.01 42);
+  --accent: oklch(0.55 0.18 48);
+  --accent-soft: oklch(0.55 0.18 48 / 0.08);
+  --accent-border: oklch(0.55 0.18 48 / 0.18);
+  --accent-glow: oklch(0.55 0.18 48 / 0.10);
+  --grain: url("data:image/svg+xml,%3Csvg viewBox='0 0 256 256' xmlns='%3Bhttp://www.w3.org/2000/svg'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.9' numOctaves='4' stitchTiles='stitch'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23n)' opacity='0.5'/%3E%3C/svg%3E");
+  --grain-opacity: 0.04;
+  --glow-opacity: 0.08;
+  --shadow-card: 0 0 0 1px oklch(0 0 0 / 0.02), 0 8px 60px oklch(0 0 0 / 0.04);
+  --shadow-toggle: 0 4px 20px oklch(0 0 0 / 0.06);
+}
+* { margin: 0; padding: 0; box-sizing: border-box; }
+body {
+  font-family: 'DM Sans', sans-serif;
+  background: var(--bg); color: var(--text);
+  min-height: 100vh; display: flex; align-items: center; justify-content: center;
+  -webkit-font-smoothing: antialiased; position: relative; overflow-x: hidden;
+}
+body::before {
+  content: ''; position: fixed; inset: 0;
+  background:
+    radial-gradient(ellipse 65% 50% at 5% 5%, oklch(0.42 0.12 35 / 0.07), transparent 55%),
+    radial-gradient(ellipse 50% 40% at 95% 95%, oklch(0.35 0.10 55 / 0.05), transparent 50%);
+  pointer-events: none; z-index: 0;
+}
+.grain { position: fixed; inset: 0; z-index: 0; pointer-events: none; opacity: var(--grain-opacity); background-image: var(--grain); background-repeat: repeat; background-size: 256px 256px; }
+.dbg-wash { position: fixed; inset: 0; z-index: 0; pointer-events: none; }
+.dbg-wash div { position: absolute; border-radius: 50%; filter: blur(120px); animation: breathe 8s ease-in-out infinite alternate; }
+.dbg-wash div:nth-child(1) { width: 500px; height: 500px; top: -200px; right: -150px; background: oklch(0.55 0.16 50 / 0.03); }
+.dbg-wash div:nth-child(2) { width: 400px; height: 400px; bottom: -150px; left: -120px; background: oklch(0.45 0.12 55 / 0.025); animation-delay: -3.5s; }
+@keyframes breathe { 0% { opacity: var(--glow-opacity); transform: scale(1); } 100% { opacity: 1; transform: scale(1.4); } }
+.dbg-rings { position: fixed; inset: 0; z-index: 0; pointer-events: none; }
+.dbg-rings div { position: absolute; border-radius: 50%; animation: ringDrift 30s ease-in-out infinite alternate; }
+.dbg-rings div:nth-child(1) { width: 600px; height: 600px; top: -250px; left: -200px; border: 1px solid oklch(0.48 0.12 45 / 0.04); }
+.dbg-rings div:nth-child(2) { width: 300px; height: 300px; bottom: -100px; right: -80px; border: 1px solid oklch(0.42 0.10 55 / 0.025); animation-delay: -10s; }
+@keyframes ringDrift { 0% { transform: translate(0,0) rotate(0deg); } 50% { transform: translate(15px,-10px) rotate(180deg); } 100% { transform: translate(-10px,15px) rotate(360deg); } }
+.deco-particles { position: fixed; inset: 0; z-index: 0; pointer-events: none; overflow: hidden; }
+.deco-particles span { position: absolute; animation: rise 25s linear infinite; }
+@keyframes rise { 0% { transform: translateY(0) rotate(0deg); opacity: 0; } 8% { opacity: 1; } 85% { opacity: 1; } 100% { transform: translateY(-120vh) rotate(720deg); opacity: 0; } }
+.deco-particles span:nth-child(1) { top: 88%; left: 15%; width: 2px; height: 2px; border-radius: 50%; background: oklch(0.50 0.12 45 / 0.10); }
+.deco-particles span:nth-child(2) { top: 92%; left: 75%; width: 3px; height: 3px; border-radius: 50%; background: oklch(0.52 0.14 50 / 0.08); animation-delay: -5s; }
+.deco-particles span:nth-child(3) { top: 85%; left: 40%; width: 2px; height: 2px; border-radius: 1px; background: oklch(0.48 0.10 55 / 0.09); animation-delay: -10s; }
+.deco-particles span:nth-child(4) { top: 95%; left: 55%; width: 2px; height: 6px; border-radius: 1px; background: oklch(0.55 0.08 45 / 0.07); animation-delay: -3s; }
+
+.login-card {
+  position: relative; z-index: 1;
+  width: 440px; max-width: 90vw;
+  background: var(--surface); backdrop-filter: blur(60px); -webkit-backdrop-filter: blur(60px);
+  border: 1px solid var(--surface-border);
+  border-radius: 28px;
+  padding: 52px 40px 40px;
+  box-shadow: var(--shadow-card);
+  animation: cardIn 0.7s cubic-bezier(0.22, 1, 0.36, 1) both;
+  overflow: hidden;
+}
+.login-card::before { content: ''; position: absolute; inset: 0; background: radial-gradient(ellipse 80% 50% at 50% 0%, var(--accent-soft), transparent 70%); pointer-events: none; }
+.login-card-inner { position: relative; z-index: 1; }
+@keyframes cardIn { 0% { opacity: 0; transform: translateY(24px) scale(0.97); } 100% { opacity: 1; transform: translateY(0) scale(1); } }
+
+.card-gradient-border { position: absolute; inset: -1px; border-radius: 28px; padding: 1px; background: conic-gradient(from var(--a,0deg) at 50% 50%, transparent, oklch(0.60 0.16 50 / 0.10), transparent, oklch(0.55 0.14 55 / 0.08), transparent); -webkit-mask: linear-gradient(#fff 0 0) content-box, linear-gradient(#fff 0 0); -webkit-mask-composite: xor; mask-composite: exclude; animation: borderSpin 8s linear infinite; pointer-events: none; }
+@property --a { syntax: '<angle>'; inherits: false; initial-value: 0deg; }
+@keyframes borderSpin { 0% { --a: 0deg; } 100% { --a: 360deg; } }
+
+.logo {
+  width: 56px; height: 56px; margin: 0 auto 24px; border-radius: 16px;
+  background: linear-gradient(145deg, oklch(0.60 0.20 45), oklch(0.65 0.18 55), oklch(0.58 0.16 65));
+  display: flex; align-items: center; justify-content: center;
+  font-family: 'Bricolage Grotesque', sans-serif; font-size: 24px; font-weight: 800; color: #fff;
+  box-shadow: 0 0 0 1px var(--accent-border), 0 8px 32px var(--accent-glow), 0 2px 0 oklch(1 0 0 / 0.08);
+  position: relative;
+}
+.logo::after { content: ''; position: absolute; inset: 0; border-radius: 16px; background: linear-gradient(135deg, oklch(1 0 0 / 0.12), transparent 50%); }
+
+h1 { font-family: 'Bricolage Grotesque', sans-serif; font-size: 24px; font-weight: 700; text-align: center; letter-spacing: -0.5px; }
+.subh { font-size: 13px; color: var(--text-muted); text-align: center; margin-top: 6px; margin-bottom: 36px; }
+
+.form-group { margin-bottom: 20px; }
+.form-group label { display: block; font-size: 10px; color: var(--text-muted); margin-bottom: 6px; letter-spacing: 1.5px; text-transform: uppercase; font-weight: 500; }
+.form-group input {
+  width: 100%; padding: 16px 18px;
+  background: var(--surface-raised); border: 1px solid var(--border-input);
+  border-radius: 14px; color: var(--text); font-size: 14px; font-family: 'DM Sans', sans-serif;
+  outline: none; transition: border-color 0.2s, box-shadow 0.2s;
+}
+.form-group input:focus { border-color: var(--accent-border); box-shadow: 0 0 0 4px var(--accent-soft); }
+.form-group input::placeholder { color: var(--text-placeholder); }
+
+.btn {
+  display: block; width: 100%; padding: 18px; margin-top: 8px;
+  border: none; border-radius: 16px;
+  background: linear-gradient(145deg, oklch(0.58 0.20 42), oklch(0.63 0.18 52), oklch(0.60 0.16 60));
+  color: #fff; font-size: 15px; font-weight: 600; cursor: pointer;
+  font-family: 'DM Sans', sans-serif; letter-spacing: 0.3px;
+  transition: all 0.35s cubic-bezier(0.22, 1, 0.36, 1);
+  box-shadow: 0 0 0 1px var(--accent-border), 0 4px 28px var(--accent-glow), 0 8px 48px oklch(0 0 0 / 0.10), inset 0 1px 0 oklch(1 0 0 / 0.12);
+  position: relative; overflow: hidden;
+}
+.btn::before { content: ''; position: absolute; top: 0; left: -100%; width: 300%; height: 100%; background: linear-gradient(90deg, transparent, oklch(1 0 0 / 0.07), transparent); transition: transform 0.7s; pointer-events: none; }
+.btn:hover::before { transform: translateX(33%); }
+.btn:hover { transform: translateY(-2px); box-shadow: 0 0 0 1px var(--accent-border), 0 8px 40px var(--accent-glow), inset 0 1px 0 oklch(1 0 0 / 0.12); }
+.btn:active { transform: translateY(-1px); }
+.btn:disabled { opacity: 0.4; cursor: default; transform: none; }
+
+.trust-badge {
+  display: flex; align-items: center; justify-content: center; gap: 8px;
+  margin-top: 20px; font-size: 11px; color: var(--text-muted);
+}
+.trust-badge svg { width: 14px; height: 14px; stroke: var(--text-back-link); fill: none; stroke-width: 2; stroke-linecap: round; stroke-linejoin: round; }
+
+.back-link { display: block; text-align: center; margin-top: 20px; font-size: 12px; color: var(--text-back-link); text-decoration: none; transition: color 0.2s; }
+.back-link:hover { color: var(--text-muted); }
+
+.error-msg { display: none; margin-top: 14px; font-size: 12px; color: oklch(0.65 0.14 20); text-align: center; background: oklch(0.45 0.14 20 / 0.08); border: 1px solid oklch(0.50 0.14 20 / 0.15); border-radius: 12px; padding: 10px; }
+.spinner { display: none; width: 20px; height: 20px; border: 2px solid oklch(1 0 0 / 0.15); border-top-color: #fff; border-radius: 50%; animation: spin 0.7s linear infinite; margin: 0 auto; }
+@keyframes spin { 0% { transform: rotate(0deg); } 100% { transform: rotate(360deg); } }
+.btn.loading .btn-text { display: none; }
+.btn.loading .spinner { display: block; }
+
+.orn-div { display: flex; align-items: center; justify-content: center; gap: 12px; padding: 20px 0 0; }
+.orn-div .line { width: 40px; height: 1px; background: linear-gradient(90deg, transparent, var(--text-placeholder)); }
+.orn-div .line:last-child { background: linear-gradient(90deg, var(--text-placeholder), transparent); }
+.orn-div .diamond { width: 6px; height: 6px; transform: rotate(45deg); border: 1px solid var(--text-back-link); }
+</style>
+</head>
+<body>
+<div class="grain"></div>
+<div class="dbg-wash"><div></div><div></div></div>
+<div class="dbg-rings"><div></div><div></div></div>
+<div class="deco-particles"><span></span><span></span><span></span><span></span></div>
+
+<button class="theme-toggle" id="themeToggle" aria-label="Toggle theme">
+  <svg class="sun" viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="5"/><line x1="12" y1="1" x2="12" y2="3"/><line x1="12" y1="21" x2="12" y2="23"/><line x1="4.22" y1="4.22" x2="5.64" y2="5.64"/><line x1="18.36" y1="18.36" x2="19.78" y2="19.78"/><line x1="1" y1="12" x2="3" y2="12"/><line x1="21" y1="12" x2="23" y2="12"/><line x1="4.22" y1="19.78" x2="5.64" y2="18.36"/><line x1="18.36" y1="5.64" x2="19.78" y2="4.22"/></svg>
+  <svg class="moon" viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 12.79A9 9 0 1 1 11.21 3 7 7 0 0 0 21 12.79z"/></svg>
+</button>
+
+<style>
+.theme-toggle {
+  position: fixed; top: 20px; right: 20px; z-index: 100;
+  width: 40px; height: 40px; border-radius: 12px;
+  background: var(--surface); border: 1px solid var(--surface-border);
+  backdrop-filter: blur(20px); -webkit-backdrop-filter: blur(20px);
+  cursor: pointer; display: flex; align-items: center; justify-content: center;
+  color: var(--text-muted); transition: all 0.3s;
+  box-shadow: var(--shadow-toggle);
+}
+.theme-toggle:hover { color: var(--accent); border-color: var(--accent-border); transform: translateY(-1px); }
+.theme-toggle svg { position: absolute; transition: opacity 0.3s, transform 0.3s; }
+[data-theme="dark"] .theme-toggle .sun { opacity: 1; transform: rotate(0deg); }
+[data-theme="dark"] .theme-toggle .moon { opacity: 0; transform: rotate(90deg); }
+[data-theme="light"] .theme-toggle .sun { opacity: 0; transform: rotate(-90deg); }
+[data-theme="light"] .theme-toggle .moon { opacity: 1; transform: rotate(0deg); }
+[data-theme="light"] .dbg-rings div, [data-theme="light"] .dbg-wash div { opacity: 0.5; }
+</style>
+
+<script>
+(function() {
+  var t = document.documentElement.getAttribute('data-theme');
+  if (!t) {
+    t = localStorage.getItem('gpa-theme') || 'dark';
+    document.documentElement.setAttribute('data-theme', t);
+  }
+  document.getElementById('themeToggle').addEventListener('click', function() {
+    var cur = document.documentElement.getAttribute('data-theme');
+    var next = cur === 'dark' ? 'light' : 'dark';
+    document.documentElement.setAttribute('data-theme', next);
+    localStorage.setItem('gpa-theme', next);
+  });
+})();
+</script>
+
+<div class="login-card" role="main">
+  <div class="card-gradient-border"></div>
+  <div class="login-card-inner">
+    <div class="logo">G</div>
+    <h1>Sign In</h1>
+    <p class="subh">Connect your LPU UMS account to see your CGPA</p>
+
+    <form id="loginForm" action="/login" method="POST">
+      <div class="form-group">
+        <label for="regno">Registration Number</label>
+        <input type="text" id="regno" name="regno" placeholder="e.g. 12304567" required autocomplete="off" autofocus>
+      </div>
+      <div class="form-group">
+        <label for="password">UMS Password</label>
+        <input type="password" id="password" name="password" placeholder="&#9679;&#9679;&#9679;&#9679;&#9679;&#9679;&#9679;&#9679;" required autocomplete="off">
+      </div>
+      <button type="submit" class="btn" id="loginBtn">
+        <span class="btn-text">Sign in with UMS</span>
+        <span class="spinner"></span>
+      </button>
+    </form>
+
+    <div class="error-msg" id="errorMsg">Invalid credentials. Please try again.</div>
+    <a href="/" class="back-link">&larr; Back to home</a>
+  </div>
+</div>
+
+<script>
+const form = document.getElementById('loginForm');
+const btn = document.getElementById('loginBtn');
+const errorMsg = document.getElementById('errorMsg');
+
+form.addEventListener('submit', async (e) => {
+  e.preventDefault();
+  errorMsg.style.display = 'none';
+  btn.classList.add('loading');
+
+  const regno = document.getElementById('regno').value.trim();
+  const password = document.getElementById('password').value;
+
+  if (!regno || !password) {
+    errorMsg.textContent = 'Please fill in both fields.';
+    errorMsg.style.display = 'block';
+    btn.classList.remove('loading');
+    return;
+  }
+
+  try {
+    const res = await fetch('/login', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ userid: regno, password })
+    });
+
+    if (res.redirected) {
+      window.location.href = res.url;
+      return;
+    }
+
+    let data;
+    try { data = await res.json(); } catch { data = {}; }
+
+    if (res.ok && data.success) {
+      window.location.href = data.redirect || '/dashboard';
+    } else if (res.ok) {
+      window.location.href = '/dashboard';
+    } else {
+      errorMsg.textContent = data.error || 'Invalid credentials. Please try again.';
+      errorMsg.style.display = 'block';
+      btn.classList.remove('loading');
+    }
+  } catch (err) {
+    errorMsg.textContent = 'Network error. Using demo mode.';
+    errorMsg.style.display = 'block';
+    btn.classList.remove('loading');
+    setTimeout(() => { window.location.href = '/dashboard'; }, 800);
+  }
+});
+</script>
+</body>
+</html>

@@ -1,40 +1,25 @@
-# YUMS — LPU UMS Dashboard Clone
+# GPA Calc — LPU UMS CGPA Calculator
 
-A self-hosted Flask web application that scrapes and re-displays academic data from LPU's **University Management System (UMS)**. Provides a modern dark-mode dashboard for attendance, marks, CGPA, profile, fee, messages, timetable, news, and placement drives.
+Self-hosted Flask app that signs into LPU's UMS and offers an interactive **what-if CGPA calculator** with a dark, conversion-optimized landing page.
 
 ## Features
 
-- **Attendance** — Per-subject summary with percentage, day-wise detail, safe-bunk calculator, and donut-chart visualization.
-- **Marks & CGPA** — Term-wise course grades, TGPA/CGPA display, and an interactive what-if CGPA calculator.
-- **Profile** — Student name, registration number, program, section, batch, email, phone.
-- **Fee** — Pending amount and payment transaction history.
-- **Messages** — Latest announcements and all-messages view.
-- **Timetable** — Weekly schedule display.
-- **News / Happenings** — Campus updates and news feed.
-- **Placements** — Your placement drives with company, drive type, and registration deadlines.
-- **Cloudflare Turnstile bypass** — Uses Scrapling's StealthyFetcher to solve the Turnstile challenge on login.
-- **Dual mode** — Run as a web server (Flask) or in CLI mode for terminal output.
-
-## Tech Stack
-
-| Component      | Technology                            |
-| -------------- | ------------------------------------- |
-| Backend        | Python 3 + Flask                      |
-| Web Scraping   | requests, BeautifulSoup 4             |
-| Anti-bot       | Scrapling (StealthyFetcher)           |
-| Frontend       | Tailwind CSS (CDN), Inter font        |
-| Templates      | Jinja2                                |
-| Testing        | unittest                              |
+- **Landing page** — Dashboard mockup preview, benefit-driven copy, trust signals, one-click UMS sign-in.
+- **Login** — Cloudflare Turnstile bypass via Scrapling StealthyFetcher.
+- **Student Profile** — Name, reg no, batch, email, phone, campus, avatar.
+- **CGPA Calculator** — Term-wise grades with live TGPA/CGPA projection on grade change.
+- **Dual mode** — Web server or CLI (`--cli`).
 
 ## Requirements
 
 - Python 3.10+
-- `flask`, `requests`, `beautifulsoup4`, `scrapling`
+- `flask`, `requests`, `beautifulsoup4`, `scrapling`, `playwright`
 
 ## Installation
 
 ```bash
-pip install flask requests beautifulsoup4 scrapling
+pip install flask requests beautifulsoup4 scrapling playwright
+playwright install chromium
 ```
 
 ## Usage
@@ -45,7 +30,7 @@ pip install flask requests beautifulsoup4 scrapling
 python main.py
 ```
 
-Opens at `http://127.0.0.1:5000`. Log in with your LPU UMS credentials.
+Opens at `http://127.0.0.1:5000`.
 
 ### CLI Mode
 
@@ -53,69 +38,33 @@ Opens at `http://127.0.0.1:5000`. Log in with your LPU UMS credentials.
 python main.py --cli <userid> <password>
 ```
 
-Prints profile, attendance summary, marks (term-wise), fee, news, messages, and placements to the terminal.
-
 ## Project Structure
 
 ```
 yumsclonesite/
-├── main.py                          # Flask app — routes, caching, orchestration
-├── utils.py                         # Login flow, Turnstile solving, API calls
-├── attendance.py                    # Attendance summary & detail parsers
-├── events.py                        # Happenings, placements, assignments,
-│                                    # timetable, heads parsers
-├── fee.py                           # Pending fee & payment history parsers
-├── lpu_attendance.py                # Older standalone version (monolithic)
-├── marks.py                         # Term-wise CGPA & course grade parsers
-├── messages.py                      # Messages & announcements parsers
-├── profile.py                       # Student profile JSON parser
-├── placements.html                  # Raw UMS login page (reference)
-├── placements_page.html             # Raw UMS login page (reference)
-├── placements_authenticated.html    # Raw UMS login page (reference)
-├── templates/
-│   ├── login.html                   # Login page — clean, minimal UI
-│   └── dashboard.html               # Dashboard — dark theme, tabbed views
-└── tests/
-    ├── __init__.py
-    └── test_login_errors.py         # Unit tests for login error handling
+├── main.py           # Flask app, routes
+├── pipeline.py       # Login, fetch, parse, display
+├── utils.py          # Turnstile solving, API calls, credit scraping
+├── landing.html      # Landing / hero page
+├── login.html        # Sign-in page
+├── dashboard.html    # Profile + CGPA calculator
+├── requirements.txt
+└── README.md
 ```
 
 ## How It Works
 
-1. **Login** — The app fetches the UMS login page via Scrapling (which solves Cloudflare Turnstile), extracts ASP.NET form fields (`__VIEWSTATE`, `__VIEWSTATEGENERATOR`, `__EVENTVALIDATION`, the dynamic password field name, and the Turnstile token), then POSTs credentials to authenticate.
-2. **Data Fetching** — After login, it calls 16+ ASP.NET WebMethod endpoints (`StudentDashboard.aspx/StudentAttendanceSummary`, `TermWiseCGPA`, `GetStudentMessages`, etc.) using the authenticated session.
-3. **Parsing** — Each endpoint returns HTML or JSON, which is parsed by dedicated functions in the `attendance.py`, `marks.py`, `profile.py`, etc. modules.
-4. **Caching** — Parsed data is cached server-side per session UUID (30-minute TTL) to avoid repeated calls.
-5. **Rendering** — The Flask dashboard route serves `dashboard.html`, which fetches cached data via `/dashboard/data` and renders it client-side with JavaScript.
+1. **Landing** → user sees a live dashboard mockup with projected CGPA, clicks "Check Your CGPA".
+2. **Login** — Fetches UMS login page via Scrapling (solves Turnstile), extracts ASP.NET fields, POSTs credentials.
+3. **Fetch** — Calls `TermWiseCGPA` and `GetStudentBasicInformation` WebMethods, scrapes `openapp.aspx` for course credits.
+4. **Render** — Single-page dashboard with profile card and what-if CGPA calculator.
 
 ## Endpoints
 
-| Route              | Method | Description                         |
-| ------------------ | ------ | ----------------------------------- |
-| `/`                | GET    | Login page                          |
-| `/login`           | POST   | Accepts JSON `{userid, password}`   |
-| `/dashboard`       | GET    | Dashboard UI                        |
-| `/dashboard/data`  | GET    | All parsed data as JSON             |
-| `/data/<section>`  | GET    | Individual section data             |
-| `/refresh`         | GET    | Re-fetches all data from UMS        |
-
-## Tests
-
-```bash
-python -m unittest discover tests
-```
-
-## Notes
-
-- Password field names on UMS change dynamically; `utils.py` extracts them from the page HTML automatically.
-- The Turnstile token is only valid for a short window — the login must be completed quickly after fetching the page.
-- `lpu_attendance.py` is an older, standalone version that only fetches attendance. Use `main.py` for full functionality.
-- The `placements*.html` files are raw snapshots of the UMS login page for reference during development.
-
-## Live Site
-
-Deployed at: [https://yumsclone.onrender.com](https://yumsclone.onrender.com)
-
-## License
-
-MIT
+| Route             | Method | Description                       |
+| ----------------- | ------ | --------------------------------- |
+| `/`               | GET    | Landing page                      |
+| `/login`          | GET    | Login page                        |
+| `/login`          | POST   | JSON `{userid, password}`         |
+| `/dashboard`      | GET    | Dashboard UI                      |
+| `/dashboard/data` | GET    | `{profile, marks}` as JSON        |
