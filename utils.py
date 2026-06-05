@@ -69,10 +69,13 @@ def get_page_with_turnstile():
         response = StealthyFetcher.fetch(
             LOGIN_URL,
             headless=True,
+            solve_cloudflare=True,
+            hide_canvas=True,
+            block_webrtc=True,
             network_idle=True,
             load_dom=True,
-            wait=20000,
-            timeout=60000,
+            wait=35000,
+            timeout=90000,
         )
         _emit_progress('turnstile', 'Page loaded, verifying Turnstile token…', 45)
         html = response.html_content if hasattr(response, 'html_content') else str(response.body or '')
