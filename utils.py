@@ -160,6 +160,11 @@ def _body_has_login_error(html: str) -> bool:
     return False
 
 
+def _cookie_name(c):
+    """Get cookie name regardless of type (Cookie object or string)."""
+    return c.name if hasattr(c, 'name') else (c.split('=')[0] if '=' in str(c) else str(c))
+
+
 def login(session, userid: str, password: str, fields: dict) -> bool:
     """Log in to LPU UMS using extracted form fields.
 
@@ -195,15 +200,15 @@ def login(session, userid: str, password: str, fields: dict) -> bool:
         'Origin': 'https://ums.lpu.in',
         'Referer': LOGIN_URL,
     }
-    cookies_before = {c.name for c in session.cookies}
+    cookies_before = {_cookie_name(c) for c in session.cookies}
     resp = session.post(LOGIN_URL, data=data, headers=headers,
                         allow_redirects=True, timeout=30)
 
     url_ok = 'studentdashboard' in resp.url.lower()
     matched_phrase = _body_has_login_error(resp.text)
     new_auth_cookies = any(
-        c.name.lower() in ('.aspxauth', 'asp.net_sessionid', 'ums_auth', 'auth')
-        for c in session.cookies if c.name not in cookies_before
+        _cookie_name(c).lower() in ('.aspxauth', 'asp.net_sessionid', 'ums_auth', 'auth')
+        for c in session.cookies if _cookie_name(c) not in cookies_before
     )
 
     if url_ok:
@@ -327,14 +332,25 @@ def _transfer_cookies(sess) -> list[dict]:
     """Transfer session cookies to Playwright-compatible format."""
     cookies = []
     for c in sess.cookies:
-        cookies.append({
-            'name': c.name,
-            'value': c.value,
-            'domain': c.domain or 'ums.lpu.in',
-            'path': c.path or '/',
-            'httpOnly': False,
-            'secure': c.secure if hasattr(c, 'secure') else True,
-        })
+        if hasattr(c, 'name'):
+            cookies.append({
+                'name': c.name,
+                'value': c.value,
+                'domain': c.domain or 'ums.lpu.in',
+                'path': c.path or '/',
+                'httpOnly': False,
+                'secure': c.secure if hasattr(c, 'secure') else True,
+            })
+        else:
+            parts = str(c).split('=', 1)
+            cookies.append({
+                'name': parts[0],
+                'value': parts[1] if len(parts) > 1 else '',
+                'domain': 'ums.lpu.in',
+                'path': '/',
+                'httpOnly': False,
+                'secure': True,
+            })
     return cookies
 
 
