@@ -18,7 +18,9 @@ LOGIN_URL = "https://ums.lpu.in/lpuums/"
 
 def _find_playwright_chromium() -> str | None:
     """Find Playwright's bundled Chromium binary for undetected_chromedriver."""
+    project_dir = os.path.dirname(os.path.abspath(__file__))
     known = [
+        os.path.join(project_dir, ".pw-browsers", "chromium-*", "chrome-linux", "chrome"),
         os.path.expanduser("~/.cache/ms-playwright/chromium-*/chrome-linux/chrome"),
         "/opt/render/.cache/ms-playwright/chromium-*/chrome-linux/chrome",
         "/root/.cache/ms-playwright/chromium-*/chrome-linux/chrome",
@@ -27,13 +29,6 @@ def _find_playwright_chromium() -> str | None:
         matches = sorted(glob.glob(pattern))
         if matches:
             return matches[0]
-    try:
-        result = subprocess.run(
-            [sys.executable, "-m", "playwright", "install", "--dry-run", "chromium"],
-            capture_output=True, text=True, timeout=15,
-        )
-    except Exception:
-        pass
     return None
 
 
