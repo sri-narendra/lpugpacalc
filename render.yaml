@@ -3,7 +3,7 @@ services:
     name: lpugpacalc
     runtime: python
     buildCommand: bash build.sh
-    startCommand: xvfb-run --auto-servernum gunicorn main:app --timeout 120
+    startCommand: gunicorn main:app --timeout 120
     envVars:
       - key: PYTHON_VERSION
         value: 3.12.7
