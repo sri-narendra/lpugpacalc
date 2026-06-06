@@ -20,15 +20,20 @@ def _find_playwright_chromium() -> str | None:
     """Find Playwright's bundled Chromium binary for undetected_chromedriver."""
     project_dir = os.path.dirname(os.path.abspath(__file__))
     known = [
-        os.path.join(project_dir, ".pw-browsers", "chromium-*", "chrome-linux", "chrome"),
-        os.path.expanduser("~/.cache/ms-playwright/chromium-*/chrome-linux/chrome"),
-        "/opt/render/.cache/ms-playwright/chromium-*/chrome-linux/chrome",
-        "/root/.cache/ms-playwright/chromium-*/chrome-linux/chrome",
+        os.path.join(project_dir, ".pw-browsers", "chromium-*", "chrome-*", "chrome"),
+        os.path.expanduser("~/.cache/ms-playwright/chromium-*/chrome-*/chrome"),
+        "/opt/render/.cache/ms-playwright/chromium-*/chrome-*/chrome",
+        "/root/.cache/ms-playwright/chromium-*/chrome-*/chrome",
     ]
     for pattern in known:
         matches = sorted(glob.glob(pattern))
         if matches:
             return matches[0]
+    pw_root = os.path.join(project_dir, ".pw-browsers")
+    if os.path.isdir(pw_root):
+        for root, _dirs, files in os.walk(pw_root):
+            if "chrome" in files:
+                return os.path.join(root, "chrome")
     return None
 
 
