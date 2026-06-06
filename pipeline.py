@@ -2,25 +2,146 @@
 import re
 import sys
 import json
+import os
+import time
 from bs4 import BeautifulSoup
 from utils import (
     fetch_login_page, parse_form_fields, login,
     call_api, fetch_credits_from_api, BASE,
-    _emit_progress,
+    _emit_progress, import_cookies_to_session,
 )
+
+LOGIN_URL = "https://ums.lpu.in/lpuums/"
+
+
+def login_via_browser(userid: str, password: str) -> tuple[list[dict], str]:
+    """Login using undetected_chromedriver to bypass Turnstile.
+
+    Launches Chrome via undetected_chromedriver (which patches ChromeDriver
+    to avoid bot detection). Turnstile auto-executes in this environment
+    because Chrome appears as a real browser.
+
+    Returns (cookies, dashboard_html) on success.
+    Raises RuntimeError on failure.
+    """
+    display = None
+    try:
+        from pyvirtualdisplay import Display
+        display = Display(visible=False, size=(1280, 720))
+        display.start()
+        print("  [XVFB] Virtual display started", file=sys.stderr)
+    except Exception:
+        pass
+
+    driver = None
+    try:
+        _emit_progress('turnstile', 'Launching browser for Turnstile…', 10)
+        import undetected_chromedriver as uc
+        driver = uc.Chrome(
+            headless=False,
+            use_subprocess=True,
+            driver_executable_path=os.environ.get('CHROMEDRIVER_PATH'),
+            browser_executable_path=os.environ.get('CHROME_PATH'),
+        )
+        _emit_progress('turnstile', 'Browser launched, loading LPU UMS…', 20)
+        driver.get(LOGIN_URL)
+
+        token = None
+        for i in range(30):
+            time.sleep(1)
+            token = driver.execute_script("""
+                const el = document.querySelector(
+                    'input[name="cf-turnstile-response"], textarea[name="cf-turnstile-response"]'
+                );
+                return el ? el.value : '';
+            """)
+            if token and len(token) > 20:
+                print(f"  [TURNSTILE] Token obtained at {i+1}s (len={len(token)})",
+                      file=sys.stderr)
+                _emit_progress('turnstile', 'Turnstile solved!', 50)
+                break
+
+        if not token or len(token) < 20:
+            raise RuntimeError(
+                f"Turnstile token not obtained after 30s (got len={len(token or '')})"
+            )
+
+        _emit_progress('turnstile', 'Logging in…', 60)
+        driver.execute_script("""
+            document.querySelectorAll(
+                '.swal2-container, .swal2-overlay, .modal-backdrop'
+            ).forEach(el => el.remove());
+            document.body.style.overflow = 'auto';
+        """)
+        time.sleep(0.5)
+
+        driver.execute_script("""
+            document.querySelector('input[name="txtU"]').value = arguments[0];
+            document.querySelector('input[type="password"]').value = arguments[1];
+        """, userid, password)
+
+        submit_name = driver.execute_script(
+            "return document.querySelector('input[type=\"submit\"]').name;"
+        )
+        driver.execute_script(f"__doPostBack('{submit_name}', '');")
+
+        for i in range(15):
+            time.sleep(1)
+            if 'studentdashboard' in driver.current_url.lower():
+                break
+
+        if 'studentdashboard' not in driver.current_url.lower():
+            msg = driver.execute_script("""
+                const swal = document.querySelector('.swal2-html-container');
+                return swal ? swal.innerText : '';
+            """)
+            raise RuntimeError(f"Login failed: {msg or 'unknown error'}")
+
+        _emit_progress('turnstile', 'Login successful! Transferring session…', 80)
+        cookies = driver.get_cookies()
+        html = driver.page_source
+        return cookies, html
+
+    finally:
+        if driver:
+            try:
+                driver.quit()
+            except Exception:
+                pass
+        if display:
+            try:
+                display.stop()
+            except Exception:
+                pass
 
 
 def login_flow(sess, userid: str, password: str) -> bool:
-    """Fetch login page using the session (so ASP.NET cookies carry over to POST)."""
-    _emit_progress('turnstile', 'Fetching login page…', 5)
+    """Log in to LPU UMS.
+
+    Tries browser-based login first (bypasses Turnstile via
+    undetected_chromedriver). Falls back to stateless curl_cffi if
+    the browser isn't available.
+    """
+    # Try browser-based login (bypasses Turnstile)
     try:
-        resp = sess.get('https://ums.lpu.in/lpuums/', timeout=30)
+        cookies, html = login_via_browser(userid, password)
+        import_cookies_to_session(sess, cookies)
+        _emit_progress('turnstile', 'Session transferred to API client', 90)
+        return True
+    except Exception as e:
+        print(f"  [BROWSER] Login failed: {e}", file=sys.stderr)
+
+    _emit_progress('turnstile', 'Falling back to curl_cffi (no Turnstile)…', 5)
+    try:
+        resp = sess.get(LOGIN_URL, timeout=30)
         html = resp.text
         if not html or len(html) < 100:
             raise ValueError(f"too short ({len(html or '')} chars)")
-        print(f"  [FETCH] session: {len(html)} chars, status={resp.status_code}", file=sys.stderr)
+        print(f"  [FETCH] session: {len(html)} chars, status={resp.status_code}",
+              file=sys.stderr)
     except Exception as e:
-        print(f"  [FETCH] session failed: {e}, falling back to stateless fetch", file=sys.stderr)
+        print(f"  [FETCH] session failed: {e}, falling back to stateless fetch",
+              file=sys.stderr)
         html = fetch_login_page()
     _emit_progress('turnstile', f'Got login page ({len(html)} chars)', 40)
 

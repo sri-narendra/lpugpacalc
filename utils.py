@@ -45,6 +45,46 @@ def _emit_progress(step: str, message: str, pct: int) -> None:
             pass
 
 
+def import_cookies_to_session(sess, cookies: list[dict]) -> None:
+    """Import browser cookies into a curl_cffi session.
+
+    Cookies from undetected_chromedriver / Selenium are raw dicts with
+    'name', 'value', 'domain', 'path' etc. This converts them to
+    http.cookiejar.Cookie objects and injects them into the session.
+    """
+    from http.cookiejar import Cookie as _Cookie
+    import time as _time
+
+    for c in cookies:
+        name = c.get('name', '')
+        value = c.get('value', '')
+        if not name:
+            continue
+        domain = c.get('domain', 'ums.lpu.in')
+        path = c.get('path', '/')
+        secure = c.get('secure', True)
+        expires = c.get('expiry', int(_time.time()) + 86400)
+        cookie = _Cookie(
+            version=0,
+            name=name,
+            value=value,
+            port=None,
+            port_specified=False,
+            domain=domain,
+            domain_specified=True,
+            domain_initial_dot=domain.startswith('.'),
+            path=path,
+            path_specified=True,
+            secure=secure,
+            expires=expires,
+            discard=False,
+            comment=None,
+            comment_url=None,
+            rest={'HttpOnly': c.get('httpOnly', False)},
+        )
+        sess.cookies.set_cookie(cookie)
+
+
 def fetch_page(url: str, method: str = 'GET', data: dict | None = None) -> str:
     """Fetch a page using curl_cffi (TLS impersonation), falling back to the
     Cloudflare Worker proxy if the direct request fails or gets a challenge."""
