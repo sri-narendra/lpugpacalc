@@ -4,6 +4,8 @@ import sys
 import json
 import os
 import time
+import glob
+import subprocess
 from bs4 import BeautifulSoup
 from utils import (
     fetch_login_page, parse_form_fields, login,
@@ -12,6 +14,27 @@ from utils import (
 )
 
 LOGIN_URL = "https://ums.lpu.in/lpuums/"
+
+
+def _find_playwright_chromium() -> str | None:
+    """Find Playwright's bundled Chromium binary for undetected_chromedriver."""
+    known = [
+        os.path.expanduser("~/.cache/ms-playwright/chromium-*/chrome-linux/chrome"),
+        "/opt/render/.cache/ms-playwright/chromium-*/chrome-linux/chrome",
+        "/root/.cache/ms-playwright/chromium-*/chrome-linux/chrome",
+    ]
+    for pattern in known:
+        matches = sorted(glob.glob(pattern))
+        if matches:
+            return matches[0]
+    try:
+        result = subprocess.run(
+            [sys.executable, "-m", "playwright", "install", "--dry-run", "chromium"],
+            capture_output=True, text=True, timeout=15,
+        )
+    except Exception:
+        pass
+    return None
 
 
 def login_via_browser(userid: str, password: str) -> tuple[list[dict], str]:
@@ -37,11 +60,16 @@ def login_via_browser(userid: str, password: str) -> tuple[list[dict], str]:
     try:
         _emit_progress('turnstile', 'Launching browser for Turnstile…', 10)
         import undetected_chromedriver as uc
+        chrome_path = os.environ.get('CHROME_PATH') or _find_playwright_chromium()
+        if chrome_path:
+            print(f"  [CHROME] Using: {chrome_path}", file=sys.stderr)
+        else:
+            print("  [CHROME] No Chrome found, letting uc auto-detect", file=sys.stderr)
         driver = uc.Chrome(
             headless=False,
             use_subprocess=True,
             driver_executable_path=os.environ.get('CHROMEDRIVER_PATH'),
-            browser_executable_path=os.environ.get('CHROME_PATH'),
+            browser_executable_path=chrome_path,
         )
         _emit_progress('turnstile', 'Browser launched, loading LPU UMS…', 20)
         driver.get(LOGIN_URL)
